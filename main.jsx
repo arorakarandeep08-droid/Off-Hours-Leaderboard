@@ -1,65 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
-import { Trophy, Plus, RotateCcw, Swords, Search, Crown, Flame, Moon, CircleDot, Trash2, Undo2, Medal, Link2, Eye, Shield } from "lucide-react";
+import { Trophy, Plus, RotateCcw, Swords, Search, Crown, Flame, Moon, CircleDot, Trash2, Undo2, Medal, Link2, Eye, Shield, Wifi, AlertTriangle } from "lucide-react";
 import "./styles.css";
 
-const defaultPlayers = [
-  { id: "p1", name: "Aarav", played: 8, won: 6, lost: 2 },
-  { id: "p2", name: "Kabir", played: 7, won: 5, lost: 2 },
-  { id: "p3", name: "Rohan", played: 9, won: 5, lost: 4 },
-  { id: "p4", name: "Ishaan", played: 6, won: 3, lost: 3 },
-  { id: "p5", name: "Dev", played: 5, won: 2, lost: 3 },
-  { id: "p6", name: "Arjun", played: 4, won: 1, lost: 3 }
-];
-
 const ADMIN_PASSWORD = "offhours67";
-const uid = () => Math.random().toString(36).slice(2, 10);
-
-function encodeShareData(data) {
-  try {
-    return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-  } catch (error) {
-    return "";
-  }
-}
-
-function decodeShareData(value) {
-  try {
-    return JSON.parse(decodeURIComponent(escape(atob(value))));
-  } catch (error) {
-    return null;
-  }
-}
-
-function getPlayerViewDataFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const data = params.get("data");
-  if (!data) return null;
-  return decodeShareData(data);
-}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 function normalizeLossPoints(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) return -1;
-  if (value >= 0) return -1;
-  return value;
-}
-
-function loadState() {
-  try {
-    const saved = localStorage.getItem("off-hours-leaderboard");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return {
-        players: parsed.players || defaultPlayers,
-        winPoints: typeof parsed.winPoints === "number" ? parsed.winPoints : 3,
-        lossPoints: normalizeLossPoints(parsed.lossPoints),
-        history: parsed.history || [],
-        lastWeekTop3: parsed.lastWeekTop3 || []
-      };
-    }
-  } catch (error) {}
-  return { players: defaultPlayers, winPoints: 3, lossPoints: -1, history: [], lastWeekTop3: [] };
+  const number = Number(value);
+  if (Number.isNaN(number)) return -1;
+  if (number >= 0) return -1;
+  return number;
 }
 
 function RankBadge({ rank }) {
@@ -79,31 +34,89 @@ function StatPill({ label, value, hint }) {
   );
 }
 
+function SetupMissing() {
+  return (
+    <div className="app-shell">
+      <div className="glow glow-red" />
+      <div className="glow glow-amber" />
+      <main className="main-wrap">
+        <section className="hero-card admin-gate-card">
+          <div className="gate-icon"><AlertTriangle size={28} /></div>
+          <h1>Supabase is not connected yet</h1>
+          <p className="gate-copy">Add your Supabase environment variables in Vercel, then redeploy.</p>
+          <div className="setup-box">
+            <code>VITE_SUPABASE_URL</code><br />
+            <code>VITE_SUPABASE_ANON_KEY</code>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
 function App() {
-  const savedState = loadState();
   const params = new URLSearchParams(window.location.search);
   const isPlayerView = params.get("view") === "players";
-  const sharedState = isPlayerView ? getPlayerViewDataFromUrl() : null;
-  const startingState = sharedState || savedState;
 
-  const [players, setPlayers] = useState(startingState.players || []);
-  const [winPoints, setWinPoints] = useState(typeof startingState.winPoints === "number" ? startingState.winPoints : 3);
-  const [lossPoints, setLossPoints] = useState(normalizeLossPoints(startingState.lossPoints));
-  const [history, setHistory] = useState(startingState.history || []);
-  const [lastWeekTop3, setLastWeekTop3] = useState(startingState.lastWeekTop3 || []);
+  const [players, setPlayers] = useState([]);
+  const [winPoints, setWinPoints] = useState(3);
+  const [lossPoints, setLossPoints] = useState(-1);
+  const [history, setHistory] = useState([]);
+  const [lastWeekTop3, setLastWeekTop3] = useState([]);
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
-  const [winnerId, setWinnerId] = useState((startingState.players || [])[0]?.id || "");
-  const [loserId, setLoserId] = useState((startingState.players || [])[1]?.id || "");
+  const [winnerId, setWinnerId] = useState("");
+  const [loserId, setLoserId] = useState("");
   const [shareStatus, setShareStatus] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminError, setAdminError] = useState("");
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("Connecting to Supabase...");
+  const [dbError, setDbError] = useState("");
+
+  if (!supabase) return <SetupMissing />;
+
+  async function loadAll(silent = false) {
+    try {
+      if (!silent) {
+        setLoading(true);
+        setStatus("Loading live leaderboard...");
+      }
+      setDbError("");
+
+      const [playersResult, settingsResult, historyResult, top3Result] = await Promise.all([
+        supabase.from("players").select("*").order("created_at", { ascending: true }),
+        supabase.from("app_settings").select("*").eq("id", 1).maybeSingle(),
+        supabase.from("match_history").select("*").order("created_at", { ascending: false }).limit(20),
+        supabase.from("last_week_top3").select("*").order("rank", { ascending: true })
+      ]);
+
+      if (playersResult.error) throw playersResult.error;
+      if (settingsResult.error) throw settingsResult.error;
+      if (historyResult.error) throw historyResult.error;
+      if (top3Result.error) throw top3Result.error;
+
+      setPlayers(playersResult.data || []);
+      const settings = settingsResult.data || { win_points: 3, loss_points: -1 };
+      setWinPoints(Number(settings.win_points ?? 3));
+      setLossPoints(normalizeLossPoints(settings.loss_points));
+      setHistory(historyResult.data || []);
+      setLastWeekTop3(top3Result.data || []);
+      setStatus("Live database connected");
+    } catch (error) {
+      setDbError(error.message || "Something went wrong while loading Supabase data.");
+      setStatus("Database error");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    if (isPlayerView) return;
-    localStorage.setItem("off-hours-leaderboard", JSON.stringify({ players, winPoints, lossPoints, history, lastWeekTop3 }));
-  }, [players, winPoints, lossPoints, history, lastWeekTop3, isPlayerView]);
+    loadAll();
+    const interval = window.setInterval(() => loadAll(true), 3000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!players.some((player) => player.id === winnerId)) setWinnerId(players[0]?.id || "");
@@ -114,8 +127,8 @@ function App() {
     return [...players]
       .map((player) => ({
         ...player,
-        points: player.won * winPoints + player.lost * lossPoints,
-        winRate: player.played ? Math.round((player.won / player.played) * 100) : 0
+        points: Number(player.won || 0) * winPoints + Number(player.lost || 0) * lossPoints,
+        winRate: player.played ? Math.round((Number(player.won || 0) / Number(player.played || 1)) * 100) : 0
       }))
       .sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
@@ -129,88 +142,118 @@ function App() {
     player.name.toLowerCase().includes(query.toLowerCase())
   );
 
-  const totalGames = Math.floor(players.reduce((sum, player) => sum + player.played, 0) / 2);
+  const totalGames = Math.floor(players.reduce((sum, player) => sum + Number(player.played || 0), 0) / 2);
   const leader = rankedPlayers[0];
 
-  function addPlayer() {
+  async function addPlayer() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const newPlayer = { id: uid(), name: trimmed, played: 0, won: 0, lost: 0 };
-    setPlayers((current) => [...current, newPlayer]);
-    if (!winnerId) setWinnerId(newPlayer.id);
-    if (!loserId) setLoserId(newPlayer.id);
+    const { error } = await supabase.from("players").insert({ name: trimmed, played: 0, won: 0, lost: 0 });
+    if (error) return setDbError(error.message);
     setName("");
+    await loadAll(true);
   }
 
-  function recordMatch() {
+  async function recordMatch() {
     if (!winnerId || !loserId || winnerId === loserId) return;
     const winner = players.find((p) => p.id === winnerId);
     const loser = players.find((p) => p.id === loserId);
-    setHistory((current) => [...current, { winnerId, loserId, winnerName: winner?.name, loserName: loser?.name, time: new Date().toISOString() }]);
-    setPlayers((current) => current.map((player) => {
-      if (player.id === winnerId) return { ...player, played: player.played + 1, won: player.won + 1 };
-      if (player.id === loserId) return { ...player, played: player.played + 1, lost: player.lost + 1 };
-      return player;
-    }));
+    if (!winner || !loser) return;
+
+    const winnerUpdate = { played: Number(winner.played || 0) + 1, won: Number(winner.won || 0) + 1 };
+    const loserUpdate = { played: Number(loser.played || 0) + 1, lost: Number(loser.lost || 0) + 1 };
+
+    const { error: winnerError } = await supabase.from("players").update(winnerUpdate).eq("id", winnerId);
+    if (winnerError) return setDbError(winnerError.message);
+    const { error: loserError } = await supabase.from("players").update(loserUpdate).eq("id", loserId);
+    if (loserError) return setDbError(loserError.message);
+    const { error: historyError } = await supabase.from("match_history").insert({ winner_id: winnerId, loser_id: loserId, winner_name: winner.name, loser_name: loser.name });
+    if (historyError) return setDbError(historyError.message);
+    await loadAll(true);
   }
 
-  function undoLastMatch() {
-    const last = history[history.length - 1];
+  async function undoLastMatch() {
+    const last = history[0];
     if (!last) return;
-    setPlayers((current) => current.map((player) => {
-      if (player.id === last.winnerId) return { ...player, played: Math.max(0, player.played - 1), won: Math.max(0, player.won - 1) };
-      if (player.id === last.loserId) return { ...player, played: Math.max(0, player.played - 1), lost: Math.max(0, player.lost - 1) };
-      return player;
-    }));
-    setHistory((current) => current.slice(0, -1));
+    const winner = players.find((p) => p.id === last.winner_id);
+    const loser = players.find((p) => p.id === last.loser_id);
+
+    if (winner) {
+      const { error } = await supabase.from("players").update({ played: Math.max(0, Number(winner.played || 0) - 1), won: Math.max(0, Number(winner.won || 0) - 1) }).eq("id", winner.id);
+      if (error) return setDbError(error.message);
+    }
+    if (loser) {
+      const { error } = await supabase.from("players").update({ played: Math.max(0, Number(loser.played || 0) - 1), lost: Math.max(0, Number(loser.lost || 0) - 1) }).eq("id", loser.id);
+      if (error) return setDbError(error.message);
+    }
+    const { error } = await supabase.from("match_history").delete().eq("id", last.id);
+    if (error) return setDbError(error.message);
+    await loadAll(true);
   }
 
-  function resetWeek() {
+  async function resetWeek() {
     if (players.length === 0) return;
     const confirmReset = window.confirm("End this week? This will remove all players and save the current top 3 as last week's leaders.");
     if (!confirmReset) return;
     const top3 = rankedPlayers.slice(0, 3).map((player, index) => ({
       rank: index + 1,
-      id: player.id,
       name: player.name,
-      played: player.played,
-      won: player.won,
-      lost: player.lost,
-      points: player.points,
-      winRate: player.winRate
+      played: Number(player.played || 0),
+      won: Number(player.won || 0),
+      lost: Number(player.lost || 0),
+      points: Number(player.points || 0),
+      win_rate: Number(player.winRate || 0)
     }));
-    setLastWeekTop3(top3);
-    setPlayers([]);
-    setHistory([]);
-    setWinnerId("");
-    setLoserId("");
+
+    let result = await supabase.from("last_week_top3").delete().not("id", "is", null);
+    if (result.error) return setDbError(result.error.message);
+    if (top3.length) {
+      result = await supabase.from("last_week_top3").insert(top3);
+      if (result.error) return setDbError(result.error.message);
+    }
+    result = await supabase.from("match_history").delete().not("id", "is", null);
+    if (result.error) return setDbError(result.error.message);
+    result = await supabase.from("players").delete().not("id", "is", null);
+    if (result.error) return setDbError(result.error.message);
     setQuery("");
+    await loadAll(true);
   }
 
-  function removePlayer(id) {
+  async function removePlayer(id) {
     const confirmRemove = window.confirm("Remove this player from the leaderboard?");
     if (!confirmRemove) return;
-    setPlayers((current) => current.filter((player) => player.id !== id));
-    setHistory((current) => current.filter((item) => item.winnerId !== id && item.loserId !== id));
+    const { error } = await supabase.from("players").delete().eq("id", id);
+    if (error) return setDbError(error.message);
+    await supabase.from("match_history").delete().or(`winner_id.eq.${id},loser_id.eq.${id}`);
+    await loadAll(true);
   }
 
-  function updateLossPoints(value) {
-    setLossPoints(normalizeLossPoints(value));
+  async function updateWinPoints(value) {
+    const next = Number(value);
+    if (Number.isNaN(next)) return;
+    setWinPoints(next);
+    const { error } = await supabase.from("app_settings").update({ win_points: next, updated_at: new Date().toISOString() }).eq("id", 1);
+    if (error) setDbError(error.message);
+  }
+
+  async function updateLossPoints(value) {
+    const next = normalizeLossPoints(value);
+    setLossPoints(next);
+    const { error } = await supabase.from("app_settings").update({ loss_points: next, updated_at: new Date().toISOString() }).eq("id", 1);
+    if (error) setDbError(error.message);
   }
 
   async function copyPlayerViewLink() {
-    const shareData = encodeShareData({ players, winPoints, lossPoints: normalizeLossPoints(lossPoints), lastWeekTop3, sharedAt: new Date().toISOString() });
-    const link = `${window.location.origin}${window.location.pathname}?view=players&data=${encodeURIComponent(shareData)}`;
+    const link = `${window.location.origin}${window.location.pathname}?view=players`;
     try {
       await navigator.clipboard.writeText(link);
-      setShareStatus("Player view link copied");
+      setShareStatus("Live player view link copied");
     } catch (error) {
-      window.prompt("Copy this player view link:", link);
+      window.prompt("Copy this live player view link:", link);
       setShareStatus("Copy the player view link from the popup");
     }
     window.setTimeout(() => setShareStatus(""), 3000);
   }
-
 
   function unlockAdmin(event) {
     event.preventDefault();
@@ -218,38 +261,27 @@ function App() {
       setIsAdminUnlocked(true);
       setAdminPassword("");
       setAdminError("");
-      return;
+    } else {
+      setAdminError("Wrong password");
     }
-    setAdminError("Wrong password. Try again.");
-  }
-
-  function lockAdmin() {
-    setIsAdminUnlocked(false);
-    setAdminPassword("");
   }
 
   if (!isPlayerView && !isAdminUnlocked) {
     return (
-      <div className="app-shell login-shell">
-        <div className="ambient ambient-red" />
-        <div className="ambient ambient-gold" />
-        <main className="login-container">
-          <section className="login-card glass-card">
-            <div className="eyebrow"><Shield size={14} /> Off Hours Admin</div>
-            <h1>Enter Admin Password</h1>
-            <p>This page edits the leaderboard. Players should only receive the view-only link.</p>
-            <form onSubmit={unlockAdmin} className="login-form">
-              <input
-                type="password"
-                value={adminPassword}
-                onChange={(e) => { setAdminPassword(e.target.value); setAdminError(""); }}
-                placeholder="Password"
-                autoFocus
-              />
-              <button className="primary-button" type="submit"><Shield size={17} /> Unlock Admin</button>
+      <div className="app-shell">
+        <div className="glow glow-red" />
+        <div className="glow glow-amber" />
+        <main className="main-wrap">
+          <section className="hero-card admin-gate-card">
+            <div className="gate-icon"><Shield size={28} /></div>
+            <h1>Admin Access</h1>
+            <p className="gate-copy">Enter the Off Hours admin password to edit the live leaderboard.</p>
+            <form onSubmit={unlockAdmin} className="gate-form">
+              <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Admin password" autoFocus />
+              <button type="submit">Unlock Admin</button>
             </form>
-            {adminError ? <div className="login-error">{adminError}</div> : null}
-            <div className="login-note">Password hint: ask the owner/admin.</div>
+            {adminError ? <p className="gate-error">{adminError}</p> : null}
+            <p className="gate-note">The admin page asks for the password every time it is loaded.</p>
           </section>
         </main>
       </div>
@@ -258,105 +290,114 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className="ambient ambient-red" />
-      <div className="ambient ambient-gold" />
-      <main className="container">
-        <section className="hero-card glass-card">
-          <div className="hero-content">
-            <div>
-              <div className="eyebrow"><Moon size={14} /> Off Hours Pool League</div>
-              <h1>Weekly 8-Ball Leaderboard</h1>
-              <p>Track every match, reward regulars, and keep the night crowd chasing the top spot. Wins add points. Losses cut points.</p>
-            </div>
-            <div className="leader-card">
-              <div className="leader-label">{isPlayerView ? "View only" : "Current leader"}</div>
-              <div className="leader-name">{leader?.name || "—"}</div>
-              <div className="leader-meta">{leader?.points ?? 0} points · {leader?.winRate || 0}% win rate</div>
-              {isPlayerView ? <div className="view-pill"><Eye size={14} /> Players can view, not edit</div> : null}
-            </div>
+      <div className="glow glow-red" />
+      <div className="glow glow-amber" />
+      <main className="main-wrap">
+        <section className="hero-card">
+          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
+            <div className="hero-topline"><Moon size={14} /> {isPlayerView ? "Off Hours Live Player View" : "Off Hours Admin"}</div>
+            <h1>Weekly 8-Ball Leaderboard</h1>
+            <p className="hero-copy">{isPlayerView ? "Live standings for players. Editing is locked." : "Track matches, sync every browser, and keep the night crowd chasing the top spot."}</p>
+          </motion.div>
+          <div className="leader-card">
+            <div className="leader-label">Current leader</div>
+            <div className="leader-name">{leader?.name || "—"}</div>
+            <div className="leader-meta">{leader?.points ?? 0} pts · {leader?.winRate ?? 0}% win rate</div>
           </div>
-          <div className="stats-grid">
-            <StatPill label="Players" value={players.length} />
-            <StatPill label="Matches" value={totalGames} />
-            <StatPill label="Points" value={`Win +${winPoints} / Loss ${lossPoints}`} hint="Losses subtract from total" />
-          </div>
-          {!isPlayerView && (
-            <div className="share-strip">
-              <div>
-                <div className="share-title"><Shield size={16} /> Player view link</div>
-                <p>Share a view-only snapshot with players. They can see the leaderboard, but edit controls are hidden.</p>
-              </div>
-              <div className="share-actions">
-                <button className="share-button" onClick={copyPlayerViewLink}><Link2 size={17} /> Copy Player Link</button>
-                <button className="lock-button" onClick={lockAdmin}><Shield size={17} /> Lock Admin</button>
-              </div>
-              {shareStatus ? <div className="share-status">{shareStatus}</div> : null}
-            </div>
-          )}
         </section>
 
-        {lastWeekTop3.length > 0 && (
-          <section className="last-week glass-card">
-            <div className="last-week-title">
-              <div className="eyebrow"><Medal size={16} /> Last Week's Top 3</div>
-              <p>Saved when you clicked reset. Use this for prize announcements or your Instagram story.</p>
-            </div>
-            <div className="podium-grid">
+        <section className="stats-grid">
+          <StatPill label="Players" value={players.length} />
+          <StatPill label="Matches" value={totalGames} />
+          <StatPill label="Win" value={`+${winPoints}`} />
+          <StatPill label="Loss" value={lossPoints} hint="Loss subtracts points" />
+        </section>
+
+        <div className={dbError ? "db-status db-error" : "db-status"}>
+          <Wifi size={15} /> {dbError || status}{loading ? "" : " · refreshes every 3 sec"}
+        </div>
+
+        {lastWeekTop3.length > 0 ? (
+          <section className="last-week-card">
+            <div className="section-heading"><Medal size={18} /> Last Week's Top 3</div>
+            <div className="top-three-grid">
               {lastWeekTop3.map((player) => (
-                <div className={`podium-card podium-${player.rank}`} key={`${player.id}-${player.rank}`}>
+                <div className="top-three-item" key={`${player.rank}-${player.name}`}>
                   <RankBadge rank={player.rank} />
                   <div>
                     <strong>{player.name}</strong>
-                    <span>{player.points} pts · {player.won}W / {player.lost}L · {player.winRate}% win rate</span>
+                    <span>{player.points} pts · {player.won}W / {player.lost}L</span>
                   </div>
                 </div>
               ))}
             </div>
           </section>
-        )}
+        ) : null}
 
-        <section className="leaderboard glass-card top-leaderboard">
-          <div className="leaderboard-header">
-            <div><div className="eyebrow"><Flame size={16} /> Live Standings</div><h2>Leaderboard</h2></div>
-            <div className="search-box"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search player" /></div>
+        <section className="board-card">
+          <div className="board-header">
+            <div>
+              <div className="section-heading"><Flame size={16} /> Live Standings</div>
+              <h2>Leaderboard</h2>
+            </div>
+            <div className="board-actions">
+              {!isPlayerView ? <button className="ghost-button" onClick={copyPlayerViewLink}><Link2 size={16} /> Copy Player Link</button> : <span className="view-badge"><Eye size={15} /> View Only</span>}
+              {shareStatus ? <span className="share-status">{shareStatus}</span> : null}
+              <div className="search-box"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search player" /></div>
+            </div>
           </div>
+
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Rank</th><th>Player</th><th>Played</th><th>Won</th><th>Lost</th><th>Win %</th><th>Points</th>{!isPlayerView && <th>Remove</th>}</tr></thead>
+              <thead>
+                <tr>
+                  <th>Rank</th><th>Player</th><th>Played</th><th>Won</th><th>Lost</th><th>Win %</th><th>Points</th>{!isPlayerView ? <th>Remove</th> : null}
+                </tr>
+              </thead>
               <tbody>
                 {filteredPlayers.length === 0 ? (
-                  <tr><td colSpan={isPlayerView ? "7" : "8"} className="empty-state">{isPlayerView ? "No leaderboard data in this shared link yet." : "No players yet. Add players below to start the new week."}</td></tr>
+                  <tr><td colSpan={isPlayerView ? 7 : 8} className="empty-cell">No players yet. Add players below.</td></tr>
                 ) : filteredPlayers.map((player) => {
                   const rank = rankedPlayers.findIndex((item) => item.id === player.id) + 1;
-                  return <motion.tr layout key={player.id}><td><RankBadge rank={rank} /></td><td><strong>{player.name}</strong><span>{rank === 1 ? "Table king" : rank <= 3 ? "In the money zone" : "Chasing the board"}</span></td><td>{player.played}</td><td className="won">{player.won}</td><td className="lost">{player.lost}</td><td>{player.winRate}%</td><td className="points">{player.points}</td>{!isPlayerView && <td><button className="delete-button" onClick={() => removePlayer(player.id)}><Trash2 size={16} /></button></td>}</motion.tr>;
+                  return (
+                    <motion.tr layout key={player.id}>
+                      <td><RankBadge rank={rank} /></td>
+                      <td><strong>{player.name}</strong><span>{rank === 1 ? "Table king" : rank <= 3 ? "In the money zone" : "Chasing the board"}</span></td>
+                      <td>{player.played}</td><td className="won">{player.won}</td><td className="lost">{player.lost}</td><td>{player.winRate}%</td><td className="points">{player.points}</td>
+                      {!isPlayerView ? <td><button className="icon-button" onClick={() => removePlayer(player.id)}><Trash2 size={16} /></button></td> : null}
+                    </motion.tr>
+                  );
                 })}
               </tbody>
             </table>
           </div>
         </section>
 
-        {!isPlayerView && <section className="actions-grid">
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="panel glass-card">
-            <div className="panel-title"><div className="icon red"><Swords size={20} /></div><div><h2>Record a Match</h2><p>Winner gets +{winPoints}. Loser gets {lossPoints}.</p></div></div>
-            <label>Winner</label>
-            <select value={winnerId} onChange={(e) => setWinnerId(e.target.value)} disabled={players.length < 2}>{players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select>
-            <label>Loser</label>
-            <select value={loserId} onChange={(e) => setLoserId(e.target.value)} disabled={players.length < 2}>{players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select>
-            <button className="primary-button" onClick={recordMatch} disabled={players.length < 2 || winnerId === loserId}><Trophy size={17} /> Add Result</button>
-            <button className="secondary-button" onClick={undoLastMatch} disabled={history.length === 0}><Undo2 size={16} /> Undo Last Match</button>
-          </motion.div>
+        {!isPlayerView ? (
+          <section className="controls-grid">
+            <div className="control-card">
+              <div className="card-title"><Swords size={20} /> <div><h2>Record a Match</h2><p>Winner gets +{winPoints}. Loser gets {lossPoints}.</p></div></div>
+              <label>Winner</label>
+              <select value={winnerId} onChange={(e) => setWinnerId(e.target.value)}>{players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+              <label>Loser</label>
+              <select value={loserId} onChange={(e) => setLoserId(e.target.value)}>{players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+              <button className="primary-button" onClick={recordMatch} disabled={players.length < 2}><Trophy size={17} /> Add Result</button>
+              <button className="secondary-button" onClick={undoLastMatch} disabled={history.length === 0}><Undo2 size={16} /> Undo Last Match</button>
+            </div>
 
-          <div className="panel glass-card">
-            <div className="panel-title"><div className="icon gold"><Plus size={20} /></div><div><h2>Add Player</h2><p>For walk-ins, regulars, or weekly members.</p></div></div>
-            <div className="inline-form"><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlayer()} placeholder="Player name" /><button onClick={addPlayer}>Add</button></div>
-          </div>
+            <div className="control-card">
+              <div className="card-title"><Plus size={20} /> <div><h2>Add Player</h2><p>For walk-ins, regulars, or weekly members.</p></div></div>
+              <div className="inline-form"><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlayer()} placeholder="Player name" /><button onClick={addPlayer}>Add</button></div>
+            </div>
 
-          <div className="panel glass-card">
-            <div className="panel-title"><div className="icon neutral"><CircleDot size={20} /></div><div><h2>Points System</h2><p>Default: win +3, loss -1.</p></div></div>
-            <div className="points-grid"><div><label>Win</label><input type="number" value={winPoints} onChange={(e) => setWinPoints(Number(e.target.value))} /></div><div><label>Loss</label><input type="number" value={lossPoints} onChange={(e) => updateLossPoints(Number(e.target.value))} /></div></div>
-            <button className="secondary-button full" onClick={resetWeek}><RotateCcw size={16} /> Reset Week & Save Top 3</button>
-          </div>
-        </section>}
+            <div className="control-card">
+              <div className="card-title"><CircleDot size={20} /> <div><h2>Points System</h2><p>Loss value is forced negative.</p></div></div>
+              <div className="points-grid"><div><label>Win</label><input type="number" value={winPoints} onChange={(e) => updateWinPoints(e.target.value)} /></div><div><label>Loss</label><input type="number" value={lossPoints} onChange={(e) => updateLossPoints(e.target.value)} /></div></div>
+              <button className="danger-button" onClick={resetWeek}><RotateCcw size={16} /> Reset Week</button>
+              <button className="secondary-button" onClick={() => setIsAdminUnlocked(false)}><Shield size={16} /> Lock Admin</button>
+            </div>
+          </section>
+        ) : null}
       </main>
     </div>
   );
