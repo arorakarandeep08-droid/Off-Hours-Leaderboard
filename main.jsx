@@ -13,6 +13,7 @@ const defaultPlayers = [
   { id: "p6", name: "Arjun", played: 4, won: 1, lost: 3 }
 ];
 
+const ADMIN_PASSWORD = "offhours67";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 function encodeShareData(data) {
@@ -95,6 +96,9 @@ function App() {
   const [winnerId, setWinnerId] = useState((startingState.players || [])[0]?.id || "");
   const [loserId, setLoserId] = useState((startingState.players || [])[1]?.id || "");
   const [shareStatus, setShareStatus] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminError, setAdminError] = useState("");
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => localStorage.getItem("off-hours-admin-unlocked") === "true");
 
   useEffect(() => {
     if (isPlayerView) return;
@@ -207,6 +211,53 @@ function App() {
     window.setTimeout(() => setShareStatus(""), 3000);
   }
 
+
+  function unlockAdmin(event) {
+    event.preventDefault();
+    if (adminPassword === ADMIN_PASSWORD) {
+      localStorage.setItem("off-hours-admin-unlocked", "true");
+      setIsAdminUnlocked(true);
+      setAdminPassword("");
+      setAdminError("");
+      return;
+    }
+    setAdminError("Wrong password. Try again.");
+  }
+
+  function lockAdmin() {
+    localStorage.removeItem("off-hours-admin-unlocked");
+    setIsAdminUnlocked(false);
+    setAdminPassword("");
+  }
+
+  if (!isPlayerView && !isAdminUnlocked) {
+    return (
+      <div className="app-shell login-shell">
+        <div className="ambient ambient-red" />
+        <div className="ambient ambient-gold" />
+        <main className="login-container">
+          <section className="login-card glass-card">
+            <div className="eyebrow"><Shield size={14} /> Off Hours Admin</div>
+            <h1>Enter Admin Password</h1>
+            <p>This page edits the leaderboard. Players should only receive the view-only link.</p>
+            <form onSubmit={unlockAdmin} className="login-form">
+              <input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => { setAdminPassword(e.target.value); setAdminError(""); }}
+                placeholder="Password"
+                autoFocus
+              />
+              <button className="primary-button" type="submit"><Shield size={17} /> Unlock Admin</button>
+            </form>
+            {adminError ? <div className="login-error">{adminError}</div> : null}
+            <div className="login-note">Password hint: ask the owner/admin.</div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <div className="ambient ambient-red" />
@@ -237,7 +288,10 @@ function App() {
                 <div className="share-title"><Shield size={16} /> Player view link</div>
                 <p>Share a view-only snapshot with players. They can see the leaderboard, but edit controls are hidden.</p>
               </div>
-              <button className="share-button" onClick={copyPlayerViewLink}><Link2 size={17} /> Copy Player Link</button>
+              <div className="share-actions">
+                <button className="share-button" onClick={copyPlayerViewLink}><Link2 size={17} /> Copy Player Link</button>
+                <button className="lock-button" onClick={lockAdmin}><Shield size={17} /> Lock Admin</button>
+              </div>
               {shareStatus ? <div className="share-status">{shareStatus}</div> : null}
             </div>
           )}
