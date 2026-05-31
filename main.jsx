@@ -98,7 +98,7 @@ function App() {
   const [shareStatus, setShareStatus] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminError, setAdminError] = useState("");
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => localStorage.getItem("off-hours-admin-unlocked") === "true");
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
 
   useEffect(() => {
     if (isPlayerView) return;
@@ -215,7 +215,6 @@ function App() {
   function unlockAdmin(event) {
     event.preventDefault();
     if (adminPassword === ADMIN_PASSWORD) {
-      localStorage.setItem("off-hours-admin-unlocked", "true");
       setIsAdminUnlocked(true);
       setAdminPassword("");
       setAdminError("");
@@ -225,7 +224,6 @@ function App() {
   }
 
   function lockAdmin() {
-    localStorage.removeItem("off-hours-admin-unlocked");
     setIsAdminUnlocked(false);
     setAdminPassword("");
   }
