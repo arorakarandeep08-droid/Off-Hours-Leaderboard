@@ -38,6 +38,12 @@ function getPlayerViewDataFromUrl() {
   return decodeShareData(data);
 }
 
+function normalizeLossPoints(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return -1;
+  if (value >= 0) return -1;
+  return value;
+}
+
 function loadState() {
   try {
     const saved = localStorage.getItem("off-hours-leaderboard");
@@ -46,7 +52,7 @@ function loadState() {
       return {
         players: parsed.players || defaultPlayers,
         winPoints: typeof parsed.winPoints === "number" ? parsed.winPoints : 3,
-        lossPoints: typeof parsed.lossPoints === "number" ? parsed.lossPoints : -1,
+        lossPoints: normalizeLossPoints(parsed.lossPoints),
         history: parsed.history || [],
         lastWeekTop3: parsed.lastWeekTop3 || []
       };
@@ -81,7 +87,7 @@ function App() {
 
   const [players, setPlayers] = useState(startingState.players || []);
   const [winPoints, setWinPoints] = useState(typeof startingState.winPoints === "number" ? startingState.winPoints : 3);
-  const [lossPoints, setLossPoints] = useState(typeof startingState.lossPoints === "number" ? startingState.lossPoints : -1);
+  const [lossPoints, setLossPoints] = useState(normalizeLossPoints(startingState.lossPoints));
   const [history, setHistory] = useState(startingState.history || []);
   const [lastWeekTop3, setLastWeekTop3] = useState(startingState.lastWeekTop3 || []);
   const [name, setName] = useState("");
@@ -184,8 +190,12 @@ function App() {
     setHistory((current) => current.filter((item) => item.winnerId !== id && item.loserId !== id));
   }
 
+  function updateLossPoints(value) {
+    setLossPoints(normalizeLossPoints(value));
+  }
+
   async function copyPlayerViewLink() {
-    const shareData = encodeShareData({ players, winPoints, lossPoints, lastWeekTop3, sharedAt: new Date().toISOString() });
+    const shareData = encodeShareData({ players, winPoints, lossPoints: normalizeLossPoints(lossPoints), lastWeekTop3, sharedAt: new Date().toISOString() });
     const link = `${window.location.origin}${window.location.pathname}?view=players&data=${encodeURIComponent(shareData)}`;
     try {
       await navigator.clipboard.writeText(link);
@@ -291,7 +301,7 @@ function App() {
 
           <div className="panel glass-card">
             <div className="panel-title"><div className="icon neutral"><CircleDot size={20} /></div><div><h2>Points System</h2><p>Default: win +3, loss -1.</p></div></div>
-            <div className="points-grid"><div><label>Win</label><input type="number" value={winPoints} onChange={(e) => setWinPoints(Number(e.target.value))} /></div><div><label>Loss</label><input type="number" value={lossPoints} onChange={(e) => setLossPoints(Number(e.target.value))} /></div></div>
+            <div className="points-grid"><div><label>Win</label><input type="number" value={winPoints} onChange={(e) => setWinPoints(Number(e.target.value))} /></div><div><label>Loss</label><input type="number" value={lossPoints} onChange={(e) => updateLossPoints(Number(e.target.value))} /></div></div>
             <button className="secondary-button full" onClick={resetWeek}><RotateCcw size={16} /> Reset Week & Save Top 3</button>
           </div>
         </section>}
