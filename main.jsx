@@ -7,7 +7,7 @@ import "./styles.css";
 
 const ADMIN_PASSWORD = "offhours67";
 const SUPABASE_URL = "https://vsyowcznpnwcpsvlayem.supabase.co";
-const SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzeW93Y3pucG53Y3BzdmxheWVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNDUzNTEsImV4cCI6MjA5NTgyMTM1MX0.9bwp1xUdZemrtplr8DwbGB3BmHNbNXWuplSmcANFCF0 || sb_publishable_6ePyY_rxXqDYHzz-THtRug_JLHRfeGL;
+const SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzeW93Y3pucG53Y3BzdmxheWVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNDUzNTEsImV4cCI6MjA5NTgyMTM1MX0.9bwp1xUdZemrtplr8DwbGB3BmHNbNXWuplSmcANFCF0 || ;
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 function normalizeLossPoints(value) {
