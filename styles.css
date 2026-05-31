@@ -171,37 +171,3 @@ td span { display: block; margin-top: 3px; color: #71717a; font-size: 12px; }
 .lock-button:hover {
   background: rgba(255,255,255,0.1);
 }
-
-.setup-box {
-  margin-top: 18px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.24);
-  border-radius: 18px;
-  padding: 16px;
-  color: rgba(255,255,255,0.84);
-  line-height: 1.9;
-}
-
-.setup-box code {
-  color: #fde68a;
-  font-size: 14px;
-}
-
-.db-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 14px 0 0;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.055);
-  color: rgba(255,255,255,0.68);
-  border-radius: 18px;
-  padding: 12px 14px;
-  font-size: 13px;
-}
-
-.db-error {
-  border-color: rgba(248,113,113,0.35);
-  background: rgba(127,29,29,0.25);
-  color: #fecaca;
-}
