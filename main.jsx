@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { motion } from "framer-motion";
-import { Trophy, Plus, RotateCcw, Swords, Search, Crown, Flame, Moon, CircleDot, Trash2, Undo2 } from "lucide-react";
+import { Trophy, Plus, RotateCcw, Swords, Search, Crown, Flame, Moon, CircleDot, Trash2, Undo2, Medal } from "lucide-react";
 import "./styles.css";
 
 const defaultPlayers = [
@@ -18,9 +18,18 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 function loadState() {
   try {
     const saved = localStorage.getItem("off-hours-leaderboard");
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        players: parsed.players || defaultPlayers,
+        winPoints: typeof parsed.winPoints === "number" ? parsed.winPoints : 3,
+        lossPoints: typeof parsed.lossPoints === "number" ? parsed.lossPoints : -1,
+        history: parsed.history || [],
+        lastWeekTop3: parsed.lastWeekTop3 || []
+      };
+    }
   } catch (error) {}
-  return { players: defaultPlayers, winPoints: 3, lossPoints: 1, history: [] };
+  return { players: defaultPlayers, winPoints: 3, lossPoints: -1, history: [], lastWeekTop3: [] };
 }
 
 function RankBadge({ rank }) {
@@ -30,11 +39,12 @@ function RankBadge({ rank }) {
   return <div className="rank">{rank}</div>;
 }
 
-function StatPill({ label, value }) {
+function StatPill({ label, value, hint }) {
   return (
     <div className="stat-pill">
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
+      {hint ? <div className="stat-hint">{hint}</div> : null}
     </div>
   );
 }
@@ -45,14 +55,20 @@ function App() {
   const [winPoints, setWinPoints] = useState(savedState.winPoints);
   const [lossPoints, setLossPoints] = useState(savedState.lossPoints);
   const [history, setHistory] = useState(savedState.history || []);
+  const [lastWeekTop3, setLastWeekTop3] = useState(savedState.lastWeekTop3 || []);
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
   const [winnerId, setWinnerId] = useState(savedState.players[0]?.id || "");
   const [loserId, setLoserId] = useState(savedState.players[1]?.id || "");
 
   useEffect(() => {
-    localStorage.setItem("off-hours-leaderboard", JSON.stringify({ players, winPoints, lossPoints, history }));
-  }, [players, winPoints, lossPoints, history]);
+    localStorage.setItem("off-hours-leaderboard", JSON.stringify({ players, winPoints, lossPoints, history, lastWeekTop3 }));
+  }, [players, winPoints, lossPoints, history, lastWeekTop3]);
+
+  useEffect(() => {
+    if (!players.some((player) => player.id === winnerId)) setWinnerId(players[0]?.id || "");
+    if (!players.some((player) => player.id === loserId)) setLoserId(players[1]?.id || players[0]?.id || "");
+  }, [players, winnerId, loserId]);
 
   const rankedPlayers = useMemo(() => {
     return [...players]
@@ -110,10 +126,25 @@ function App() {
   }
 
   function resetWeek() {
-    const confirmReset = window.confirm("Reset all weekly scores? Player names will remain.");
+    if (players.length === 0) return;
+    const confirmReset = window.confirm("End this week? This will remove all players and save the current top 3 as last week's leaders.");
     if (!confirmReset) return;
-    setPlayers((current) => current.map((player) => ({ ...player, played: 0, won: 0, lost: 0 })));
+    const top3 = rankedPlayers.slice(0, 3).map((player, index) => ({
+      rank: index + 1,
+      id: player.id,
+      name: player.name,
+      played: player.played,
+      won: player.won,
+      lost: player.lost,
+      points: player.points,
+      winRate: player.winRate
+    }));
+    setLastWeekTop3(top3);
+    setPlayers([]);
     setHistory([]);
+    setWinnerId("");
+    setLoserId("");
+    setQuery("");
   }
 
   function removePlayer(id) {
@@ -128,67 +159,86 @@ function App() {
       <div className="ambient ambient-red" />
       <div className="ambient ambient-gold" />
       <main className="container">
-        <section className="hero-grid">
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="hero-card glass-card">
-            <div className="hero-content">
-              <div>
-                <div className="eyebrow"><Moon size={14} /> Off Hours Pool League</div>
-                <h1>Weekly 8-Ball Leaderboard</h1>
-                <p>Track every match, reward regulars, and keep the night crowd chasing the top spot.</p>
-              </div>
-              <div className="leader-card">
-                <div className="leader-label">Current leader</div>
-                <div className="leader-name">{leader?.name || "—"}</div>
-                <div className="leader-meta">{leader?.points || 0} points · {leader?.winRate || 0}% win rate</div>
-              </div>
+        <section className="hero-card glass-card">
+          <div className="hero-content">
+            <div>
+              <div className="eyebrow"><Moon size={14} /> Off Hours Pool League</div>
+              <h1>Weekly 8-Ball Leaderboard</h1>
+              <p>Track every match, reward regulars, and keep the night crowd chasing the top spot. Wins add points. Losses cut points.</p>
             </div>
-            <div className="stats-grid">
-              <StatPill label="Players" value={players.length} />
-              <StatPill label="Matches" value={totalGames} />
-              <StatPill label="Win Points" value={winPoints} />
-            </div>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="panel glass-card">
-            <div className="panel-title"><div className="icon red"><Swords size={20} /></div><div><h2>Record a Match</h2><p>Winner gets points. Loser gets attendance points.</p></div></div>
-            <label>Winner</label>
-            <select value={winnerId} onChange={(e) => setWinnerId(e.target.value)}>{players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select>
-            <label>Loser</label>
-            <select value={loserId} onChange={(e) => setLoserId(e.target.value)}>{players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select>
-            <button className="primary-button" onClick={recordMatch}><Trophy size={17} /> Add Result</button>
-            <button className="secondary-button" onClick={undoLastMatch}><Undo2 size={16} /> Undo Last Match</button>
-          </motion.div>
-        </section>
-
-        <section className="main-grid">
-          <div className="side-stack">
-            <div className="panel glass-card">
-              <div className="panel-title"><div className="icon gold"><Plus size={20} /></div><div><h2>Add Player</h2><p>For walk-ins, regulars, or weekly members.</p></div></div>
-              <div className="inline-form"><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlayer()} placeholder="Player name" /><button onClick={addPlayer}>Add</button></div>
-            </div>
-            <div className="panel glass-card">
-              <div className="panel-title"><div className="icon neutral"><CircleDot size={20} /></div><div><h2>Points System</h2><p>Change it based on your weekly format.</p></div></div>
-              <div className="points-grid"><div><label>Win</label><input type="number" min="0" value={winPoints} onChange={(e) => setWinPoints(Number(e.target.value))} /></div><div><label>Loss</label><input type="number" min="0" value={lossPoints} onChange={(e) => setLossPoints(Number(e.target.value))} /></div></div>
-              <button className="secondary-button full" onClick={resetWeek}><RotateCcw size={16} /> Reset Weekly Scores</button>
+            <div className="leader-card">
+              <div className="leader-label">Current leader</div>
+              <div className="leader-name">{leader?.name || "—"}</div>
+              <div className="leader-meta">{leader?.points ?? 0} points · {leader?.winRate || 0}% win rate</div>
             </div>
           </div>
+          <div className="stats-grid">
+            <StatPill label="Players" value={players.length} />
+            <StatPill label="Matches" value={totalGames} />
+            <StatPill label="Points" value={`Win +${winPoints} / Loss ${lossPoints}`} hint="Losses subtract from total" />
+          </div>
+        </section>
 
-          <div className="leaderboard glass-card">
-            <div className="leaderboard-header">
-              <div><div className="eyebrow"><Flame size={16} /> Live Standings</div><h2>Leaderboard</h2></div>
-              <div className="search-box"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search player" /></div>
+        {lastWeekTop3.length > 0 && (
+          <section className="last-week glass-card">
+            <div className="last-week-title">
+              <div className="eyebrow"><Medal size={16} /> Last Week's Top 3</div>
+              <p>Saved when you clicked reset. Use this for prize announcements or your Instagram story.</p>
             </div>
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>Rank</th><th>Player</th><th>Played</th><th>Won</th><th>Lost</th><th>Win %</th><th>Points</th><th></th></tr></thead>
-                <tbody>
-                  {filteredPlayers.map((player) => {
-                    const rank = rankedPlayers.findIndex((item) => item.id === player.id) + 1;
-                    return <motion.tr layout key={player.id}><td><RankBadge rank={rank} /></td><td><strong>{player.name}</strong><span>{rank === 1 ? "Table king" : rank <= 3 ? "In the money zone" : "Chasing the board"}</span></td><td>{player.played}</td><td className="won">{player.won}</td><td className="lost">{player.lost}</td><td>{player.winRate}%</td><td className="points">{player.points}</td><td><button className="delete-button" onClick={() => removePlayer(player.id)}><Trash2 size={16} /></button></td></motion.tr>;
-                  })}
-                </tbody>
-              </table>
+            <div className="podium-grid">
+              {lastWeekTop3.map((player) => (
+                <div className={`podium-card podium-${player.rank}`} key={`${player.id}-${player.rank}`}>
+                  <RankBadge rank={player.rank} />
+                  <div>
+                    <strong>{player.name}</strong>
+                    <span>{player.points} pts · {player.won}W / {player.lost}L · {player.winRate}% win rate</span>
+                  </div>
+                </div>
+              ))}
             </div>
+          </section>
+        )}
+
+        <section className="leaderboard glass-card top-leaderboard">
+          <div className="leaderboard-header">
+            <div><div className="eyebrow"><Flame size={16} /> Live Standings</div><h2>Leaderboard</h2></div>
+            <div className="search-box"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search player" /></div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Rank</th><th>Player</th><th>Played</th><th>Won</th><th>Lost</th><th>Win %</th><th>Points</th><th>Remove</th></tr></thead>
+              <tbody>
+                {filteredPlayers.length === 0 ? (
+                  <tr><td colSpan="8" className="empty-state">No players yet. Add players below to start the new week.</td></tr>
+                ) : filteredPlayers.map((player) => {
+                  const rank = rankedPlayers.findIndex((item) => item.id === player.id) + 1;
+                  return <motion.tr layout key={player.id}><td><RankBadge rank={rank} /></td><td><strong>{player.name}</strong><span>{rank === 1 ? "Table king" : rank <= 3 ? "In the money zone" : "Chasing the board"}</span></td><td>{player.played}</td><td className="won">{player.won}</td><td className="lost">{player.lost}</td><td>{player.winRate}%</td><td className="points">{player.points}</td><td><button className="delete-button" onClick={() => removePlayer(player.id)}><Trash2 size={16} /></button></td></motion.tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="actions-grid">
+          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="panel glass-card">
+            <div className="panel-title"><div className="icon red"><Swords size={20} /></div><div><h2>Record a Match</h2><p>Winner gets +{winPoints}. Loser gets {lossPoints}.</p></div></div>
+            <label>Winner</label>
+            <select value={winnerId} onChange={(e) => setWinnerId(e.target.value)} disabled={players.length < 2}>{players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select>
+            <label>Loser</label>
+            <select value={loserId} onChange={(e) => setLoserId(e.target.value)} disabled={players.length < 2}>{players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select>
+            <button className="primary-button" onClick={recordMatch} disabled={players.length < 2 || winnerId === loserId}><Trophy size={17} /> Add Result</button>
+            <button className="secondary-button" onClick={undoLastMatch} disabled={history.length === 0}><Undo2 size={16} /> Undo Last Match</button>
+          </motion.div>
+
+          <div className="panel glass-card">
+            <div className="panel-title"><div className="icon gold"><Plus size={20} /></div><div><h2>Add Player</h2><p>For walk-ins, regulars, or weekly members.</p></div></div>
+            <div className="inline-form"><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlayer()} placeholder="Player name" /><button onClick={addPlayer}>Add</button></div>
+          </div>
+
+          <div className="panel glass-card">
+            <div className="panel-title"><div className="icon neutral"><CircleDot size={20} /></div><div><h2>Points System</h2><p>Default: win +3, loss -1.</p></div></div>
+            <div className="points-grid"><div><label>Win</label><input type="number" value={winPoints} onChange={(e) => setWinPoints(Number(e.target.value))} /></div><div><label>Loss</label><input type="number" value={lossPoints} onChange={(e) => setLossPoints(Number(e.target.value))} /></div></div>
+            <button className="secondary-button full" onClick={resetWeek}><RotateCcw size={16} /> Reset Week & Save Top 3</button>
           </div>
         </section>
       </main>
