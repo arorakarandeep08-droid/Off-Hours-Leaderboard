@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { motion } from "framer-motion";
-import { Trophy, Plus, RotateCcw, Swords, Search, Crown, Flame, Moon, CircleDot, Trash2, Undo2, Medal } from "lucide-react";
+import { Trophy, Plus, RotateCcw, Swords, Search, Crown, Flame, Moon, CircleDot, Trash2, Undo2, Medal, Link2, Eye, Shield } from "lucide-react";
 import "./styles.css";
 
 const defaultPlayers = [
@@ -14,6 +14,29 @@ const defaultPlayers = [
 ];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+function encodeShareData(data) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  } catch (error) {
+    return "";
+  }
+}
+
+function decodeShareData(value) {
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(value))));
+  } catch (error) {
+    return null;
+  }
+}
+
+function getPlayerViewDataFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const data = params.get("data");
+  if (!data) return null;
+  return decodeShareData(data);
+}
 
 function loadState() {
   try {
@@ -51,19 +74,26 @@ function StatPill({ label, value, hint }) {
 
 function App() {
   const savedState = loadState();
-  const [players, setPlayers] = useState(savedState.players);
-  const [winPoints, setWinPoints] = useState(savedState.winPoints);
-  const [lossPoints, setLossPoints] = useState(savedState.lossPoints);
-  const [history, setHistory] = useState(savedState.history || []);
-  const [lastWeekTop3, setLastWeekTop3] = useState(savedState.lastWeekTop3 || []);
+  const params = new URLSearchParams(window.location.search);
+  const isPlayerView = params.get("view") === "players";
+  const sharedState = isPlayerView ? getPlayerViewDataFromUrl() : null;
+  const startingState = sharedState || savedState;
+
+  const [players, setPlayers] = useState(startingState.players || []);
+  const [winPoints, setWinPoints] = useState(typeof startingState.winPoints === "number" ? startingState.winPoints : 3);
+  const [lossPoints, setLossPoints] = useState(typeof startingState.lossPoints === "number" ? startingState.lossPoints : -1);
+  const [history, setHistory] = useState(startingState.history || []);
+  const [lastWeekTop3, setLastWeekTop3] = useState(startingState.lastWeekTop3 || []);
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
-  const [winnerId, setWinnerId] = useState(savedState.players[0]?.id || "");
-  const [loserId, setLoserId] = useState(savedState.players[1]?.id || "");
+  const [winnerId, setWinnerId] = useState((startingState.players || [])[0]?.id || "");
+  const [loserId, setLoserId] = useState((startingState.players || [])[1]?.id || "");
+  const [shareStatus, setShareStatus] = useState("");
 
   useEffect(() => {
+    if (isPlayerView) return;
     localStorage.setItem("off-hours-leaderboard", JSON.stringify({ players, winPoints, lossPoints, history, lastWeekTop3 }));
-  }, [players, winPoints, lossPoints, history, lastWeekTop3]);
+  }, [players, winPoints, lossPoints, history, lastWeekTop3, isPlayerView]);
 
   useEffect(() => {
     if (!players.some((player) => player.id === winnerId)) setWinnerId(players[0]?.id || "");
@@ -154,6 +184,19 @@ function App() {
     setHistory((current) => current.filter((item) => item.winnerId !== id && item.loserId !== id));
   }
 
+  async function copyPlayerViewLink() {
+    const shareData = encodeShareData({ players, winPoints, lossPoints, lastWeekTop3, sharedAt: new Date().toISOString() });
+    const link = `${window.location.origin}${window.location.pathname}?view=players&data=${encodeURIComponent(shareData)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareStatus("Player view link copied");
+    } catch (error) {
+      window.prompt("Copy this player view link:", link);
+      setShareStatus("Copy the player view link from the popup");
+    }
+    window.setTimeout(() => setShareStatus(""), 3000);
+  }
+
   return (
     <div className="app-shell">
       <div className="ambient ambient-red" />
@@ -167,9 +210,10 @@ function App() {
               <p>Track every match, reward regulars, and keep the night crowd chasing the top spot. Wins add points. Losses cut points.</p>
             </div>
             <div className="leader-card">
-              <div className="leader-label">Current leader</div>
+              <div className="leader-label">{isPlayerView ? "View only" : "Current leader"}</div>
               <div className="leader-name">{leader?.name || "—"}</div>
               <div className="leader-meta">{leader?.points ?? 0} points · {leader?.winRate || 0}% win rate</div>
+              {isPlayerView ? <div className="view-pill"><Eye size={14} /> Players can view, not edit</div> : null}
             </div>
           </div>
           <div className="stats-grid">
@@ -177,6 +221,16 @@ function App() {
             <StatPill label="Matches" value={totalGames} />
             <StatPill label="Points" value={`Win +${winPoints} / Loss ${lossPoints}`} hint="Losses subtract from total" />
           </div>
+          {!isPlayerView && (
+            <div className="share-strip">
+              <div>
+                <div className="share-title"><Shield size={16} /> Player view link</div>
+                <p>Share a view-only snapshot with players. They can see the leaderboard, but edit controls are hidden.</p>
+              </div>
+              <button className="share-button" onClick={copyPlayerViewLink}><Link2 size={17} /> Copy Player Link</button>
+              {shareStatus ? <div className="share-status">{shareStatus}</div> : null}
+            </div>
+          )}
         </section>
 
         {lastWeekTop3.length > 0 && (
@@ -206,20 +260,20 @@ function App() {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Rank</th><th>Player</th><th>Played</th><th>Won</th><th>Lost</th><th>Win %</th><th>Points</th><th>Remove</th></tr></thead>
+              <thead><tr><th>Rank</th><th>Player</th><th>Played</th><th>Won</th><th>Lost</th><th>Win %</th><th>Points</th>{!isPlayerView && <th>Remove</th>}</tr></thead>
               <tbody>
                 {filteredPlayers.length === 0 ? (
-                  <tr><td colSpan="8" className="empty-state">No players yet. Add players below to start the new week.</td></tr>
+                  <tr><td colSpan={isPlayerView ? "7" : "8"} className="empty-state">{isPlayerView ? "No leaderboard data in this shared link yet." : "No players yet. Add players below to start the new week."}</td></tr>
                 ) : filteredPlayers.map((player) => {
                   const rank = rankedPlayers.findIndex((item) => item.id === player.id) + 1;
-                  return <motion.tr layout key={player.id}><td><RankBadge rank={rank} /></td><td><strong>{player.name}</strong><span>{rank === 1 ? "Table king" : rank <= 3 ? "In the money zone" : "Chasing the board"}</span></td><td>{player.played}</td><td className="won">{player.won}</td><td className="lost">{player.lost}</td><td>{player.winRate}%</td><td className="points">{player.points}</td><td><button className="delete-button" onClick={() => removePlayer(player.id)}><Trash2 size={16} /></button></td></motion.tr>;
+                  return <motion.tr layout key={player.id}><td><RankBadge rank={rank} /></td><td><strong>{player.name}</strong><span>{rank === 1 ? "Table king" : rank <= 3 ? "In the money zone" : "Chasing the board"}</span></td><td>{player.played}</td><td className="won">{player.won}</td><td className="lost">{player.lost}</td><td>{player.winRate}%</td><td className="points">{player.points}</td>{!isPlayerView && <td><button className="delete-button" onClick={() => removePlayer(player.id)}><Trash2 size={16} /></button></td>}</motion.tr>;
                 })}
               </tbody>
             </table>
           </div>
         </section>
 
-        <section className="actions-grid">
+        {!isPlayerView && <section className="actions-grid">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="panel glass-card">
             <div className="panel-title"><div className="icon red"><Swords size={20} /></div><div><h2>Record a Match</h2><p>Winner gets +{winPoints}. Loser gets {lossPoints}.</p></div></div>
             <label>Winner</label>
@@ -240,7 +294,7 @@ function App() {
             <div className="points-grid"><div><label>Win</label><input type="number" value={winPoints} onChange={(e) => setWinPoints(Number(e.target.value))} /></div><div><label>Loss</label><input type="number" value={lossPoints} onChange={(e) => setLossPoints(Number(e.target.value))} /></div></div>
             <button className="secondary-button full" onClick={resetWeek}><RotateCcw size={16} /> Reset Week & Save Top 3</button>
           </div>
-        </section>
+        </section>}
       </main>
     </div>
   );

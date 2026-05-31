@@ -76,3 +76,10 @@ td span { display: block; margin-top: 3px; color: #71717a; font-size: 12px; }
 @media (max-width: 1050px) { .actions-grid { grid-template-columns: 1fr; } .podium-grid { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .hero-content, .leaderboard-header, .last-week-title { flex-direction: column; align-items: stretch; } .leader-card { text-align: left; } .search-box { min-width: 0; } }
 @media (max-width: 600px) { .container { padding: 14px; } .stats-grid, .points-grid { grid-template-columns: 1fr; } .inline-form { flex-direction: column; } }
+.share-strip { margin-top: 18px; display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.16); border-radius: 24px; padding: 16px; position: relative; }
+.share-title { display: inline-flex; align-items: center; gap: 8px; color: #fde68a; font-weight: 900; letter-spacing: -0.02em; }
+.share-strip p { margin: 4px 0 0; font-size: 13px; }
+.share-button { height: 46px; border-radius: 16px; padding: 0 16px; background: #fde68a; color: #18181b; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 900; white-space: nowrap; }
+.share-status { position: absolute; right: 16px; bottom: -34px; border: 1px solid rgba(255,255,255,0.1); background: rgba(9,8,7,0.92); color: #a7f3d0; border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 800; }
+.view-pill { margin-top: 12px; display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.07); color: #d4d4d8; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; }
+@media (max-width: 700px) { .share-strip { grid-template-columns: 1fr; } .share-button { width: 100%; } .share-status { position: static; width: fit-content; } }
